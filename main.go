@@ -38,6 +38,10 @@ func main() {
 	var streamName = "Foo"
 	var iteratorType = kinesis.ShardIteratorTypeTrimHorizon
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	})
+
 	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
 
 		enableCors(&w)

@@ -16,6 +16,9 @@ import (
 
 func main() {
 
+	fmt.Println("V: 1.0")
+
+
 	var (
 		stream    = flag.String("stream", "Foo", "Stream name")
 		awsRegion = flag.String("region", "eu-central-1", "AWS Region")
@@ -108,6 +111,7 @@ func main() {
 // Just for testing purposes
 func enableCors(w *http.ResponseWriter) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Headers", "*")
 }
 
 func cleanString(str string) string {

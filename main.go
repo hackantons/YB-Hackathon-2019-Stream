@@ -65,6 +65,9 @@ func main() {
 			for i := 0; i < len(records); i++ {
 				dataString := cleanString(string(records[i].Data))
 				fmt.Println(dataString)
+				for i := 0; i < len(dataString); i++ {
+					fmt.Printf("%x ", dataString[i])
+				}
 				wsClient.send <- []byte(dataString)
 			}
 		case "POST":
@@ -123,5 +126,7 @@ func cleanString(str string) string {
 		return data
 	}
 	data = data[firstIndex:len(data)]
+	data = strings.ReplaceAll(data, "\x11", "")
+	data = strings.ReplaceAll(data, "\xb3", "")
 	return data
 }

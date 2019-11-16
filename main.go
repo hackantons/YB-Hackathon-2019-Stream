@@ -24,6 +24,7 @@ type Message struct {
 	Group string `json:"group"`
 	Time string `json:"time"`
 	Type string `json:"type"`
+	Name string `json:"name"`
 }
 
 func main() {

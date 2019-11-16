@@ -22,7 +22,7 @@ type Message struct {
 	Sentiment string `json:"sentiment"`
 	Label string `json:"label"`
 	Group string `json:"group"`
-	Time int32 `json:"time"`
+	Time string `json:"time"`
 	Type string `json:"type"`
 }
 

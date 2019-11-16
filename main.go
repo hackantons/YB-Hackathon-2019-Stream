@@ -2,21 +2,33 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/comprehend"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	consumer "github.com/harlow/kinesis-consumer"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
+
+type Message struct {
+	Message string `json:"message"`
+	Sentiment string `json:"sentiment"`
+	Label string `json:"label"`
+	Group string `json:"group"`
+	Time int32 `json:"time"`
+	Type string `json:"type"`
+}
 
 func main() {
 
-	fmt.Println("V: 1.0")
+	fmt.Println("V: 1.1")
 
 
 	var (
@@ -46,7 +58,6 @@ func main() {
 	})
 
 	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-
 		enableCors(&w)
 
 		switch r.Method {
@@ -65,9 +76,6 @@ func main() {
 			for i := 0; i < len(records); i++ {
 				dataString := cleanString(string(records[i].Data))
 				fmt.Println(dataString)
-				for i := 0; i < len(dataString); i++ {
-					fmt.Printf("%x ", dataString[i])
-				}
 				wsClient.send <- []byte(dataString)
 			}
 		case "POST":
@@ -75,8 +83,49 @@ func main() {
 			if err != nil {
 				fmt.Println(err)
 			}
-			fmt.Println(string(body))
-			producer.Put(body, "Foo")
+			str := string(body)
+			str = ToValidUTF8(str)
+
+			var message Message
+			json.Unmarshal([]byte(str), &message)
+
+			if message.Type == "text" {
+				sess := session.Must(session.NewSession(&aws.Config{
+					Region: aws.String("eu-central-1"),
+				}))
+
+				// Create a Comprehend client from just a session.
+				client := comprehend.New(sess)
+
+
+				params := comprehend.DetectSentimentInput{}
+				params.SetLanguageCode("de")
+				params.SetText(message.Message)
+
+				req, resp := client.DetectSentimentRequest(&params)
+
+				err = req.Send()
+				if err == nil { // resp is now filled
+					fmt.Println(resp.SentimentScore)
+					if *resp.SentimentScore.Negative > *resp.SentimentScore.Neutral &&
+					 *resp.SentimentScore.Negative > *resp.SentimentScore.Positive {
+						message.Sentiment = "Negative"
+					} else if *resp.SentimentScore.Positive > *resp.SentimentScore.Negative &&
+						*resp.SentimentScore.Positive > *resp.SentimentScore.Neutral {
+						message.Sentiment = "Positive"
+					} else {
+						message.Sentiment = "Neutral"
+					}
+
+					data, _ := json.Marshal(message)
+					producer.Put(data, "Foo")
+				} else {
+					fmt.Println(err)
+				}
+			} else {
+				fmt.Println("WIthout sentimentation")
+				producer.Put([]byte(str), "Foo")
+			}
 		}
 	})
 
@@ -105,9 +154,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("scan error: %v", err)
 	}
-	fmt.Println("test")
-	// Note: If you need to aggregate based on a specific shard
-	// the `ScanShard` function should be used instead.
 
 }
 
@@ -119,6 +165,7 @@ func enableCors(w *http.ResponseWriter) {
 
 func cleanString(str string) string {
 	var data = str
+	data = ToValidUTF8(data)
 	lastIndex := strings.LastIndex(data, "}")
 	data = data[0:lastIndex+1]
 	firstIndex := strings.Index(data, "{")
@@ -128,5 +175,23 @@ func cleanString(str string) string {
 	data = data[firstIndex:len(data)]
 	data = strings.ReplaceAll(data, "\x11", "")
 	data = strings.ReplaceAll(data, "\xb3", "")
+	data = strings.ReplaceAll(data, "\x6d\nxd2", "")
 	return data
+}
+
+func ToValidUTF8(s string) string {
+	if !utf8.ValidString(s) {
+		v := make([]rune, 0, len(s))
+		for i, r := range s {
+			if r == utf8.RuneError {
+				_, size := utf8.DecodeRuneInString(s[i:])
+				if size == 1 {
+					continue
+				}
+			}
+			v = append(v, r)
+		}
+		s = string(v)
+	}
+	return s
 }
